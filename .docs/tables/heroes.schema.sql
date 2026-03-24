@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS heroes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_heroes_weapon_type ON heroes(weapon_type_id);
+CREATE INDEX IF NOT EXISTS idx_heroes_move_type   ON heroes(move_type);
+CREATE INDEX IF NOT EXISTS idx_heroes_name        ON heroes(name);
 
 
 CREATE TABLE IF NOT EXISTS heroes_art (

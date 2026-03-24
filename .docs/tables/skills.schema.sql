@@ -132,9 +132,13 @@ CREATE TABLE IF NOT EXISTS skills (
     sp_cost        INTEGER,
     description    TEXT    NOT NULL,
     is_prf         INTEGER NOT NULL DEFAULT 0 CHECK (is_prf IN (0, 1)),
-    is_inheritable INTEGER NOT NULL DEFAULT 1 CHECK (is_inheritable IN (0, 1))
+    is_inheritable INTEGER NOT NULL DEFAULT 1 CHECK (is_inheritable IN (0, 1)),
+    UNIQUE (name, slot)
 );
 
+
+CREATE INDEX IF NOT EXISTS idx_skills_slot ON skills(slot);
+CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name);
 
 -- skill_hero_locks is defined in junctions.schema.sql
 -- (depends on both skills and heroes — load order resolved there)
@@ -157,8 +161,15 @@ CREATE TABLE IF NOT EXISTS skill_restrictions (
     restriction_id    INTEGER PRIMARY KEY AUTOINCREMENT,
     skill_id          INTEGER NOT NULL REFERENCES skills(skill_id) ON DELETE CASCADE,
     restriction_type  TEXT    NOT NULL CHECK (restriction_type IN ('move_type', 'weapon_type', 'color')),
-    restriction_value TEXT    NOT NULL
+    restriction_value TEXT    NOT NULL,
+    CHECK (
+        (restriction_type = 'move_type'   AND restriction_value IN ('Infantry', 'Cavalry', 'Armored', 'Flying'))   OR
+        (restriction_type = 'weapon_type' AND restriction_value IN ('Sword', 'Lance', 'Axe', 'Staff', 'Tome', 'Bow', 'Dagger', 'Breath', 'Beast')) OR
+        (restriction_type = 'color'       AND restriction_value IN ('Red', 'Blue', 'Green', 'Colorless'))
+    )
 );
+
+CREATE INDEX IF NOT EXISTS idx_skill_restrictions_skill ON skill_restrictions(skill_id);
 
 
 -- -----------------------------------------------------------------------------

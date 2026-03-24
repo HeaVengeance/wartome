@@ -49,7 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_hero_origins_origin ON hero_origins(origin_id);
 CREATE TABLE IF NOT EXISTS hero_skills (
     hero_skill_id INTEGER PRIMARY KEY AUTOINCREMENT,
     hero_id       INTEGER NOT NULL REFERENCES heroes(hero_id)  ON DELETE CASCADE,
-    skill_id      INTEGER NOT NULL REFERENCES skills(skill_id),
+    skill_id      INTEGER NOT NULL REFERENCES skills(skill_id) ON DELETE CASCADE,
     slot          TEXT    NOT NULL CHECK (slot IN (
                       'Weapon', 'Assist', 'Special',
                       'A', 'B', 'C', 'X', 'S'

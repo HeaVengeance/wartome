@@ -55,7 +55,7 @@ erDiagram
     heroes_art {
         int art_id PK
         int hero_id FK
-        text type
+        text art_type
         text portrait_url
         text neutral_url
         text attack_url
@@ -76,19 +76,6 @@ erDiagram
         int spd
         int def
         int res
-    }
-
-    hero_skills {
-        int hero_skill_id PK
-        int hero_id FK
-        int skill_id FK
-        text slot
-        int unlock_rarity
-    }
-
-    hero_origins {
-        int hero_id FK
-        int origin_id FK
     }
 
     %% -------------------------
@@ -154,11 +141,6 @@ erDiagram
     %% SKILL RULES
     %% -------------------------
 
-    skill_hero_locks {
-        int skill_id FK
-        int hero_id FK
-    }
-
     skill_restrictions {
         int restriction_id PK
         int skill_id FK
@@ -190,6 +172,28 @@ erDiagram
 
     skill_effect_map ||--o{ skill_effect_conditions : "activated by"
     conditions       ||--o{ skill_effect_conditions : "applied to"
+
+    %% -------------------------
+    %% JUNCTIONS
+    %% -------------------------
+
+    hero_origins {
+        int hero_id FK
+        int origin_id FK
+    }
+
+    hero_skills {
+        int hero_skill_id PK
+        int hero_id FK
+        int skill_id FK
+        text slot
+        int unlock_rarity
+    }
+
+    skill_hero_locks {
+        int skill_id FK
+        int hero_id FK
+    }
 ```
 
 ---

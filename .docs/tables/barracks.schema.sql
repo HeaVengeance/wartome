@@ -1,0 +1,10 @@
+-- =============================================================================
+-- BARRACKS SCHEMA
+-- =============================================================================
+-- Tracks the player's personal collection of heroes.
+-- Depends on heroes.schema.sql and junctions.schema.sql — load last.
+--
+-- Planned tables:
+--   barracks       → owned hero instances (merges, dragonflowers, level, etc.)
+--   barracks_skills → skills equipped on a barracks hero (may differ from defaults)
+-- =============================================================================
