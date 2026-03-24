@@ -99,10 +99,16 @@ CREATE TABLE IF NOT EXISTS skill_effects (
     is_permanent   INTEGER NOT NULL DEFAULT 0 CHECK (is_permanent IN (0, 1)),
     is_in_combat   INTEGER NOT NULL DEFAULT 0 CHECK (is_in_combat IN (0, 1)),
     is_status      INTEGER NOT NULL DEFAULT 0 CHECK (is_status IN (0, 1)),
-    effect_target  TEXT    NOT NULL, -- Unit, Foe, Ally, All Allies, Support Partner, etc.
-    effect_area    TEXT    NOT NULL, -- Self, Adjacent, Within 2, Within 3, Cardinal, Global
+    effect_target  TEXT    NOT NULL CHECK (effect_target IN (
+                       'Unit', 'Foe', 'Ally', 'All Allies', 'All Foes', 'Support Partner'
+                   )),
+    effect_area    TEXT    NOT NULL CHECK (effect_area IN (
+                       'Self', 'Adjacent', 'Within 2', 'Within 3', 'Cardinal', 'Global'
+                   )),
     description    TEXT    NOT NULL  -- human-readable summary of this effect pattern
 );
+
+CREATE INDEX IF NOT EXISTS idx_skill_effects_type ON skill_effects(effect_type_id);
 
 
 -- -----------------------------------------------------------------------------
@@ -130,17 +136,8 @@ CREATE TABLE IF NOT EXISTS skills (
 );
 
 
--- -----------------------------------------------------------------------------
--- SKILL HERO LOCKS
--- Links a prf skill to the specific hero(es) it belongs to.
--- Most prf skills belong to one hero, but some (e.g. variants of the same
--- legendary weapon) may belong to multiple.
--- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS skill_hero_locks (
-    skill_id INTEGER NOT NULL REFERENCES skills(skill_id) ON DELETE CASCADE,
-    hero_id  INTEGER NOT NULL REFERENCES heroes(hero_id)  ON DELETE CASCADE,
-    PRIMARY KEY (skill_id, hero_id)
-);
+-- skill_hero_locks is defined in junctions.schema.sql
+-- (depends on both skills and heroes — load order resolved there)
 
 
 -- -----------------------------------------------------------------------------
@@ -208,9 +205,8 @@ CREATE TABLE IF NOT EXISTS conditions (
                        'start_of_player_phase',
                        'start_of_enemy_phase',
                        'in_combat',
-                       'always',
-                       NULL
-                   )),
+                       'always'
+                   )),                         -- nullable: NULL means no phase restriction
     description    TEXT     NOT NULL -- human-readable, always required
 );
 
@@ -231,12 +227,15 @@ CREATE TABLE IF NOT EXISTS conditions (
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS skill_effect_map (
     map_id     INTEGER PRIMARY KEY AUTOINCREMENT,
-    skill_id   INTEGER NOT NULL REFERENCES skills(skill_id)        ON DELETE CASCADE,
-    effect_id  INTEGER NOT NULL REFERENCES skill_effects(effect_id),
+    skill_id   INTEGER NOT NULL REFERENCES skills(skill_id)         ON DELETE CASCADE,
+    effect_id  INTEGER NOT NULL REFERENCES skill_effects(effect_id) ON DELETE CASCADE,
     stat       TEXT    CHECK (stat IN ('HP', 'Atk', 'Spd', 'Def', 'Res')),
     magnitude  INTEGER, -- the +6, +9, x5 value; NULL for effects with no quantity
     UNIQUE (skill_id, effect_id, stat)
 );
+
+CREATE INDEX IF NOT EXISTS idx_skill_effect_map_skill  ON skill_effect_map(skill_id);
+CREATE INDEX IF NOT EXISTS idx_skill_effect_map_effect ON skill_effect_map(effect_id);
 
 
 -- -----------------------------------------------------------------------------
@@ -262,7 +261,10 @@ CREATE TABLE IF NOT EXISTS skill_effect_map (
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS skill_effect_conditions (
     map_id          INTEGER NOT NULL REFERENCES skill_effect_map(map_id) ON DELETE CASCADE,
-    condition_id    INTEGER NOT NULL REFERENCES conditions(condition_id),
+    condition_id    INTEGER NOT NULL REFERENCES conditions(condition_id) ON DELETE CASCADE,
     condition_group INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (map_id, condition_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_skill_effect_cond_map       ON skill_effect_conditions(map_id);
+CREATE INDEX IF NOT EXISTS idx_skill_effect_cond_condition  ON skill_effect_conditions(condition_id);

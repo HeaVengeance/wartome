@@ -6,14 +6,13 @@ High-level map of how all tables relate. Grouped by concern.
 
 ## Groups
 
-| Group | Tables | File |
-|---|---|---|
-| General Lookups | `weapon_types`, `origins`, `hero_origins` | general.schema.sql |
-| Hero Catalog | `heroes`, `heroes_art`, `hero_stats`, `hero_skills` | heroes.schema.sql |
-| Skill Catalog | `skills`, `skill_effects`, `effect_types` | skills.schema.sql |
-| Skill Wiring | `skill_effect_map`, `skill_effect_conditions`, `conditions` | skills.schema.sql |
-| Skill Rules | `skill_hero_locks`, `skill_restrictions` | skills.schema.sql |
-| Barracks | *(planned)* | barracks.schema.sql |
+| Load Order | Group | Tables | File |
+|---|---|---|---|
+| 1 | General Lookups | `weapon_types`, `origins` | general.schema.sql |
+| 2 | Hero Catalog | `heroes`, `heroes_art`, `hero_stats` | heroes.schema.sql |
+| 3 | Skill Catalog | `effect_types`, `skill_effects`, `skills`, `conditions`, `skill_effect_map`, `skill_effect_conditions`, `skill_restrictions` | skills.schema.sql |
+| 4 | Junctions | `hero_origins`, `hero_skills`, `skill_hero_locks` | junctions.schema.sql |
+| — | Barracks | *(planned)* | barracks.schema.sql |
 
 ---
 

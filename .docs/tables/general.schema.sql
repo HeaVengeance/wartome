@@ -1,3 +1,10 @@
+-- =============================================================================
+-- IMPORTANT: SQLite does not enforce foreign keys by default.
+-- The following pragma must be enabled at connection time:
+--   PRAGMA foreign_keys = ON;
+-- With Drizzle + better-sqlite3, set this in your db client config.
+-- =============================================================================
+
 
 -- Weapons
 CREATE TABLE IF NOT EXISTS weapon_types (
@@ -68,9 +75,5 @@ INSERT INTO origins (origin_id, code, title, series_order) VALUES
     (19, 'TMS',  'Tokyo Mirage Sessions #FE Encore',     NULL)
 ;
 
--- Junction table: a hero can have multiple origins
-CREATE TABLE IF NOT EXISTS hero_origins (
-    hero_id   INTEGER NOT NULL REFERENCES heroes(hero_id) ON DELETE CASCADE,
-    origin_id INTEGER NOT NULL REFERENCES origins(origin_id),
-    PRIMARY KEY (hero_id, origin_id)
-);
+-- hero_origins is defined in junctions.schema.sql
+-- (depends on both heroes and origins — load order resolved there)
