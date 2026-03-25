@@ -94,7 +94,7 @@ INSERT INTO effect_types (name, category) VALUES
 --   Self, Adjacent, Within 2, Within 3, Cardinal, Global
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS skill_effects (
-    effect_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    skill_effect_id INTEGER PRIMARY KEY AUTOINCREMENT,
     effect_type_id INTEGER NOT NULL REFERENCES effect_types(effect_type_id),
     is_permanent   INTEGER NOT NULL DEFAULT 0 CHECK (is_permanent IN (0, 1)),
     is_in_combat   INTEGER NOT NULL DEFAULT 0 CHECK (is_in_combat IN (0, 1)),
@@ -105,7 +105,9 @@ CREATE TABLE IF NOT EXISTS skill_effects (
     effect_area    TEXT    NOT NULL CHECK (effect_area IN (
                        'Self', 'Adjacent', 'Within 2', 'Within 3', 'Cardinal', 'Global'
                    )),
-    description    TEXT    NOT NULL  -- human-readable summary of this effect pattern
+    description    TEXT    NOT NULL,  -- human-readable summary of this effect pattern
+    -- prevent duplicate effect patterns — same structural columns = same effect
+    UNIQUE (effect_type_id, is_permanent, is_in_combat, is_status, effect_target, effect_area)
 );
 
 CREATE INDEX IF NOT EXISTS idx_skill_effects_type ON skill_effects(effect_type_id);
@@ -129,12 +131,20 @@ CREATE TABLE IF NOT EXISTS skills (
                        'Weapon', 'Assist', 'Special',
                        'A', 'B', 'C', 'S', 'X'
                    )),
+    weapon_type_id INTEGER REFERENCES weapon_types(weapon_type_id),
     sp_cost        INTEGER,
     description    TEXT    NOT NULL,
     is_prf         INTEGER NOT NULL DEFAULT 0 CHECK (is_prf IN (0, 1)),
     is_inheritable INTEGER NOT NULL DEFAULT 1 CHECK (is_inheritable IN (0, 1)),
+    -- weapon skills must declare their weapon type; non-weapon skills must not
+    CHECK (
+        (slot = 'Weapon' AND weapon_type_id IS NOT NULL) OR
+        (slot != 'Weapon' AND weapon_type_id IS NULL)
+    ),
     UNIQUE (name, slot)
 );
+
+CREATE INDEX IF NOT EXISTS idx_skills_weapon_type ON skills(weapon_type_id);
 
 
 CREATE INDEX IF NOT EXISTS idx_skills_slot ON skills(slot);
@@ -145,31 +155,49 @@ CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name);
 
 
 -- -----------------------------------------------------------------------------
--- SKILL RESTRICTIONS
--- For inheritable skills that can't be used by certain unit types.
--- The game shows these as "Cannot be inherited by: Cavalry, Armored" etc.
+-- SKILL MOVE RESTRICTIONS
+-- Which move types cannot inherit a given skill.
+-- One row per (skill, move_type) pair.
 --
--- restriction_type  → the axis of restriction
--- restriction_value → the specific value being restricted
---
--- Examples:
---   ('move_type',   'Cavalry')   → cavalry units cannot inherit this
---   ('weapon_type', 'Staff')     → staff users cannot inherit this
---   ('color',       'Colorless') → colorless units cannot inherit this
+-- Example: a skill restricted to Infantry and Flying only would have two rows:
+--   (skill_id=X, move_type='Cavalry')
+--   (skill_id=X, move_type='Armored')
 -- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS skill_restrictions (
-    restriction_id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    skill_id          INTEGER NOT NULL REFERENCES skills(skill_id) ON DELETE CASCADE,
-    restriction_type  TEXT    NOT NULL CHECK (restriction_type IN ('move_type', 'weapon_type', 'color')),
-    restriction_value TEXT    NOT NULL,
-    CHECK (
-        (restriction_type = 'move_type'   AND restriction_value IN ('Infantry', 'Cavalry', 'Armored', 'Flying'))   OR
-        (restriction_type = 'weapon_type' AND restriction_value IN ('Sword', 'Lance', 'Axe', 'Staff', 'Tome', 'Bow', 'Dagger', 'Breath', 'Beast')) OR
-        (restriction_type = 'color'       AND restriction_value IN ('Red', 'Blue', 'Green', 'Colorless'))
-    )
+CREATE TABLE IF NOT EXISTS skill_move_restrictions (
+    skill_id  INTEGER NOT NULL REFERENCES skills(skill_id) ON DELETE CASCADE,
+    move_type TEXT    NOT NULL CHECK (move_type IN ('Infantry', 'Cavalry', 'Armored', 'Flying')),
+    PRIMARY KEY (skill_id, move_type)
 );
 
-CREATE INDEX IF NOT EXISTS idx_skill_restrictions_skill ON skill_restrictions(skill_id);
+-- PK covers (skill_id, move_type) — add reverse index for move_type → skills lookups
+CREATE INDEX IF NOT EXISTS idx_skill_move_restr_move ON skill_move_restrictions(move_type);
+
+
+-- -----------------------------------------------------------------------------
+-- SKILL WEAPON RESTRICTIONS
+-- Which weapon type + color combos cannot inherit a given skill.
+-- Uses weapon_type_id FK so restriction is precise: weapon_type_id=5 is Red Tome
+-- only, not all Tomes. To restrict all Tomes insert four rows (one per color).
+--
+-- Why FK to weapon_types instead of free text?
+--   The old design used restriction_type='weapon_type' + restriction_value='Tome',
+--   which could only target the broad weapon category — all Tome colors or none.
+--   By pointing directly at weapon_type_id, a restriction can target e.g.
+--   Colorless Tome (id=8) without also blocking Red Tome (id=5) users.
+--
+-- Example: skill restricted to non-Staff users:
+--   Four rows for Staff/Colorless (weapon_type_id=4) only.
+-- Example: skill restricted to non-Colorless users:
+--   One row each for Colorless Tome, Bow, Dagger, Breath, Beast (ids 8,12,16,20,24).
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS skill_weapon_restrictions (
+    skill_id       INTEGER NOT NULL REFERENCES skills(skill_id)             ON DELETE CASCADE,
+    weapon_type_id INTEGER NOT NULL REFERENCES weapon_types(weapon_type_id) ON DELETE CASCADE,
+    PRIMARY KEY (skill_id, weapon_type_id)
+);
+
+-- PK covers (skill_id, weapon_type_id) — add reverse for weapon_type_id → skills lookups
+CREATE INDEX IF NOT EXISTS idx_skill_weapon_restr_weapon ON skill_weapon_restrictions(weapon_type_id);
 
 
 -- -----------------------------------------------------------------------------
@@ -208,8 +236,8 @@ CREATE TABLE IF NOT EXISTS conditions (
                        'ally_count',         -- number of allies within X spaces
                        'consecutive_attacks' -- number of attacks made in current combat
                    )),
-    subject        TEXT,    -- Unit, Foe, Partner, Ally (nullable for phase conditions)
-    operator       TEXT,    -- >, <, >=, <=, =, within, IS, IS NOT
+    subject        TEXT     CHECK (subject IS NULL OR subject IN ('Unit', 'Foe', 'Partner', 'Ally')),
+    operator       TEXT     CHECK (operator IS NULL OR operator IN ('>', '<', '>=', '<=', '=', 'within', 'IS', 'IS NOT')),
     value          TEXT,    -- 50 (%), Res, 2 (spaces), deployed, S+, odd, etc.
     phase          TEXT     CHECK (phase IN (
                        'start_of_turn',
@@ -221,6 +249,20 @@ CREATE TABLE IF NOT EXISTS conditions (
     description    TEXT     NOT NULL -- human-readable, always required
 );
 
+-- Uniqueness on conditions uses a partial-NULL-safe expression index.
+-- SQLite UNIQUE treats each NULL as distinct, so two rows with NULL subject
+-- would not be caught by a plain UNIQUE constraint. COALESCE('') normalises
+-- NULLs so identical conditions are rejected regardless of nullable columns.
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_conditions ON conditions (
+    condition_type,
+    COALESCE(subject,  ''),
+    COALESCE(operator, ''),
+    COALESCE(value,    ''),
+    COALESCE(phase,    '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_conditions_type ON conditions(condition_type);
+
 
 -- -----------------------------------------------------------------------------
 -- SKILL EFFECT MAP
@@ -229,7 +271,7 @@ CREATE TABLE IF NOT EXISTS conditions (
 -- Why one row per stat?
 --   Tunnel Vision gives Atk/Spd/Def/Res+9. Storing this as 'Atk/Spd/Def/Res'
 --   in a single column makes it impossible to query "all skills that boost Atk."
---   Instead, four rows share the same effect_id with stat = Atk, Spd, Def, Res.
+--   Instead, four rows share the same skill_effect_id with stat = Atk, Spd, Def, Res.
 --   Now "all skills that boost Atk by 6+" is a simple WHERE.
 --
 -- stat       → which stat this row targets (nullable for non-stat effects)
@@ -237,16 +279,20 @@ CREATE TABLE IF NOT EXISTS conditions (
 --              like Pass or Miracle that have no magnitude)
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS skill_effect_map (
-    map_id     INTEGER PRIMARY KEY AUTOINCREMENT,
-    skill_id   INTEGER NOT NULL REFERENCES skills(skill_id)         ON DELETE CASCADE,
-    effect_id  INTEGER NOT NULL REFERENCES skill_effects(effect_id) ON DELETE CASCADE,
-    stat       TEXT    CHECK (stat IN ('HP', 'Atk', 'Spd', 'Def', 'Res')),
-    magnitude  INTEGER, -- the +6, +9, x5 value; NULL for effects with no quantity
-    UNIQUE (skill_id, effect_id, stat)
+    skill_effect_map_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    skill_id            INTEGER NOT NULL REFERENCES skills(skill_id)                    ON DELETE CASCADE,
+    skill_effect_id     INTEGER NOT NULL REFERENCES skill_effects(skill_effect_id)      ON DELETE CASCADE,
+    stat                TEXT    CHECK (stat IN ('HP', 'Atk', 'Spd', 'Def', 'Res')),
+    magnitude           INTEGER -- the +6, +9, x5 value; NULL for effects with no quantity
 );
 
-CREATE INDEX IF NOT EXISTS idx_skill_effect_map_skill  ON skill_effect_map(skill_id);
-CREATE INDEX IF NOT EXISTS idx_skill_effect_map_effect ON skill_effect_map(effect_id);
+-- Plain UNIQUE on (skill_id, skill_effect_id, stat) would not catch duplicate NULL-stat rows
+-- because SQLite treats each NULL as distinct. COALESCE('') normalises NULLs for comparison.
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_skill_effect_map
+    ON skill_effect_map(skill_id, skill_effect_id, COALESCE(stat, ''));
+
+CREATE INDEX IF NOT EXISTS idx_skill_effect_map_skill   ON skill_effect_map(skill_id);
+CREATE INDEX IF NOT EXISTS idx_skill_effect_map_effect  ON skill_effect_map(skill_effect_id);
 
 
 -- -----------------------------------------------------------------------------
@@ -260,22 +306,30 @@ CREATE INDEX IF NOT EXISTS idx_skill_effect_map_effect ON skill_effect_map(effec
 --   Different condition_groups on the same map_id are evaluated with AND.
 --
 -- Example — Tunnel Vision's "Attack Twice" has three OR'd conditions:
---   (map_id=X, condition_id=1, condition_group=1) → Res > foe's Res
---   (map_id=X, condition_id=2, condition_group=1) → Partner within 2 spaces
---   (map_id=X, condition_id=3, condition_group=1) → S+ Partner deployed
+--   (skill_effect_map_id=X, condition_id=1, condition_group=1) → Res > foe's Res
+--   (skill_effect_map_id=X, condition_id=2, condition_group=1) → Partner within 2 spaces
+--   (skill_effect_map_id=X, condition_id=3, condition_group=1) → S+ Partner deployed
 --   All three share condition_group=1, so any one of them is sufficient.
 --
 -- Example — a skill requiring BOTH above 50% HP AND unit initiated combat:
---   (map_id=Y, condition_id=4, condition_group=1) → HP >= 50%
---   (map_id=Y, condition_id=5, condition_group=2) → unit initiated combat
+--   (skill_effect_map_id=Y, condition_id=4, condition_group=1) → HP >= 50%
+--   (skill_effect_map_id=Y, condition_id=5, condition_group=2) → unit initiated combat
 --   Different groups, so both must be true.
 -- -----------------------------------------------------------------------------
+-- Surrogate PK replaces the old composite PK(map_id, condition_id).
+-- Reason: the old PK prevented the same condition from appearing in two different
+-- condition_groups on the same effect (e.g. "HP >= 50%" as part of both an OR group
+-- and a separate AND group). The UNIQUE below allows same condition in different groups
+-- but still prevents duplicate rows within the same group.
 CREATE TABLE IF NOT EXISTS skill_effect_conditions (
-    map_id          INTEGER NOT NULL REFERENCES skill_effect_map(map_id) ON DELETE CASCADE,
-    condition_id    INTEGER NOT NULL REFERENCES conditions(condition_id) ON DELETE CASCADE,
-    condition_group INTEGER NOT NULL DEFAULT 1,
-    PRIMARY KEY (map_id, condition_id)
+    sec_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    skill_effect_map_id INTEGER NOT NULL REFERENCES skill_effect_map(skill_effect_map_id) ON DELETE CASCADE,
+    condition_id        INTEGER NOT NULL REFERENCES conditions(condition_id)               ON DELETE CASCADE,
+    condition_group     INTEGER NOT NULL DEFAULT 1,
+    -- Same condition may appear in different groups (AND branches) but not twice in the same group.
+    UNIQUE (skill_effect_map_id, condition_id, condition_group)
 );
 
-CREATE INDEX IF NOT EXISTS idx_skill_effect_cond_map       ON skill_effect_conditions(map_id);
-CREATE INDEX IF NOT EXISTS idx_skill_effect_cond_condition  ON skill_effect_conditions(condition_id);
+-- UNIQUE(skill_effect_map_id, condition_id, condition_group) covers skill_effect_map_id prefix lookups.
+-- Add reverse index for condition → skill_effect_map lookups.
+CREATE INDEX IF NOT EXISTS idx_skill_effect_cond_condition ON skill_effect_conditions(condition_id);

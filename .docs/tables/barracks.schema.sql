@@ -2,9 +2,18 @@
 -- BARRACKS SCHEMA
 -- =============================================================================
 -- Tracks the player's personal collection of heroes.
--- Depends on heroes.schema.sql and junctions.schema.sql — load last.
+-- Depends on all prior files — load last.
+-- Load order: 7 (after general, heroes, skills, hero_types, junctions, banners)
 --
 -- Planned tables:
---   barracks       → owned hero instances (merges, dragonflowers, level, etc.)
+--   barracks        → owned hero instances (merges, dragonflowers, level, etc.)
 --   barracks_skills → skills equipped on a barracks hero (may differ from defaults)
+--
+-- NOTE: junctions.schema.sql will likely need to be split before or when this
+-- file is built out. barracks_skills is a hero×skill junction and belongs with
+-- the other junction tables. Suggested split at that point:
+--   hero_skill_junctions.schema.sql  → hero_origins, hero_skills, skill_hero_locks
+--   character_junctions.schema.sql   → hero_relations, character_relations
+--   hero_type_junctions.schema.sql   → hero_type_map, hero_ally_boosts
+--   barracks_junctions.schema.sql    → barracks_skills (and any future barracks junctions)
 -- =============================================================================
